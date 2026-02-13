@@ -1,0 +1,53 @@
+app:
+  name: travel-tips-app
+  namespace: sskd
+  replicas: 1
+  port: 1337
+  healthPath: /_health
+
+  image:
+    repository: ghcr.io/etozhealkhipce/travel-tips-be
+    tag: latest
+    pullPolicy: Always
+
+  imagePullSecrets:
+    - name: travel-tips-ghcr-secret
+
+  initContainers:
+    - name: wait-for-db
+      image: postgres:16-alpine
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "Waiting for database to be ready..."
+          until pg_isready -h "${DATABASE_HOST}" -p "${DATABASE_PORT}" -U "${DATABASE_USERNAME}" 2>/dev/null; do
+            echo "Database is unavailable - sleeping"
+            sleep 2
+          done
+          echo "Database is ready! Strapi will handle schema sync automatically."
+      env:
+        DATABASE_HOST: travel-tips-db
+        DATABASE_PORT: "5432"
+
+  env:
+    NODE_ENV: production
+    HOST: "0.0.0.0"
+    PORT: "1337"
+    DATABASE_CLIENT: postgres
+    DATABASE_HOST: travel-tips-db
+    DATABASE_PORT: "5432"
+  envFrom:
+    - secretRef:
+        name: travel-tips-app-secrets
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  ingress:
+    enabled: true
+    host: travel-tips.sskd.tech

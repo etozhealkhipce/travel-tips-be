@@ -1,0 +1,86 @@
+name: Deploy Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm database deployment'
+        required: true
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: sskd
+  BASE_REPO: etozhealkhipce/senior-script-kiddie-k3s
+
+jobs:
+  deploy-database:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'deploy'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: DEPLOY DATABASE
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_USER: ${{ secrets.DATABASE_USERNAME }}
+          DB_PASS: ${{ secrets.DATABASE_PASSWORD }}
+          DB_NAME: ${{ secrets.DATABASE_NAME }}
+          REPO: ${{ github.repository }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DB_USER,DB_PASS,DB_NAME,REPO
+          script: |
+            set -e
+            export KUBECONFIG=~/.kube/config
+
+            echo "CREATING DATABASE SECRETS..."
+
+            # Encode secrets to base64
+            DB_USER_B64=$(echo -n "$DB_USER" | base64)
+            DB_PASS_B64=$(echo -n "$DB_PASS" | base64)
+            DB_NAME_B64=$(echo -n "$DB_NAME" | base64)
+
+            # Create database secrets
+            cat << EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: travel-tips-db-secrets
+              namespace: ${{ env.NAMESPACE }}
+            type: Opaque
+            data:
+              POSTGRES_USER: ${DB_USER_B64}
+              POSTGRES_PASSWORD: ${DB_PASS_B64}
+              POSTGRES_DB: ${DB_NAME_B64}
+            EOF
+
+            echo "DATABASE SECRETS CREATED"
+
+            # Clone repos
+            cd /tmp && rm -rf deploy-travel-tips-db
+            mkdir deploy-travel-tips-db && cd deploy-travel-tips-db
+
+            git clone --depth 1 https://github.com/${{ env.BASE_REPO }}.git base
+            git clone --depth 1 https://github.com/${REPO}.git consumer
+
+            cd base/charts/sskd-app
+            helm dependency update
+
+            echo "DEPLOYING DATABASE..."
+            helm upgrade --install travel-tips-db . \
+              --namespace ${{ env.NAMESPACE }} \
+              -f /tmp/deploy-travel-tips-db/consumer/deploy/values-database.yml \
+              --wait --timeout 10m
+
+            echo "WAITING FOR DATABASE TO BE READY..."
+            kubectl wait --for=condition=ready pod -l app=travel-tips-db -n ${{ env.NAMESPACE }} --timeout=300s
+
+            echo "DATABASE DEPLOYED SUCCESSFULLY!"
+            kubectl get pods -n ${{ env.NAMESPACE }} -l app=travel-tips-db
+            kubectl get pvc -n ${{ env.NAMESPACE }} | grep travel-tips-db
+
+            # Cleanup
+            rm -rf /tmp/deploy-travel-tips-db

@@ -1,0 +1,14 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    uses: etozhealkhipce/senior-script-kiddie-k3s/.github/workflows/deploy-app.yml@main
+    with:
+      app_name: travel-tips-be
+      app_host: travel-tips.sskd.tech
+      app_secrets: "DATABASE_NAME,DATABASE_USERNAME,DATABASE_PASSWORD,APP_KEYS,ADMIN_JWT_SECRET,API_TOKEN_SALT,TRANSFER_TOKEN_SALT,ENCRYPTION_KEY"
+    secrets: inherit
