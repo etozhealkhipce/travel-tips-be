@@ -1,43 +1,30 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
-WORKDIR /app
+RUN apk update && apk add --no-cache build-base gcc autoconf automake zlib-dev libpng-dev vips-dev git > /dev/null 2>&1
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 
-RUN apk add --no-cache \
-  libc6-compat \
-  python3 \
-  make \
-  g++ \
-  && rm -rf /var/cache/apk/*
-
-FROM base AS deps
+WORKDIR /opt/
 COPY package.json package-lock.json ./
-RUN npm ci
-
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
+RUN npm install -g node-gyp
+RUN npm config set fetch-retry-maxtimeout 600000 -g && npm install --only=production
+ENV PATH=/opt/node_modules/.bin:$PATH
+WORKDIR /opt/app
 COPY . .
-ENV NODE_ENV=production
 RUN npm run build
 
 FROM base AS production
-RUN apk add --no-cache tini && rm -rf /var/cache/apk/*
 
-ENV NODE_ENV=production
-ENV HOST=0.0.0.0
-ENV PORT=1337
+RUN apk add --no-cache vips-dev
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+WORKDIR /opt/
+COPY --from=base /opt/node_modules ./node_modules
+WORKDIR /opt/app
+COPY --from=base /opt/app ./
+ENV PATH=/opt/node_modules/.bin:$PATH
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Strapi 5: build output is dist/ (backend + admin in dist/build)
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/config ./config
-COPY --from=build /app/public ./public
-COPY --from=build /app/database ./database
-COPY --from=build /app/data ./data
-COPY --from=build /app/.strapi-updater.json ./.strapi-updater.json
-
+RUN chown -R node:node /opt/app
+USER node
 EXPOSE 1337
-
-ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["npm", "run", "start"]
