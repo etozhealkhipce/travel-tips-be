@@ -6,3 +6,7 @@ dev:
 
 down:
 	docker-compose down
+
+reset:
+	docker-compose down -v
+	docker-compose up -d database
