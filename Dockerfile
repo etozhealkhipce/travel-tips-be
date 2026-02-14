@@ -29,13 +29,12 @@ ENV PORT=1337
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=build /app/build ./build
-COPY --from=build /app/public ./public
+# Strapi 5: build output is dist/ (backend + admin in dist/build)
+COPY --from=build /app/dist ./dist
 COPY --from=build /app/config ./config
-COPY --from=build /app/src ./src
+COPY --from=build /app/public ./public
 COPY --from=build /app/database ./database
 COPY --from=build /app/data ./data
-COPY --from=build /app/dist ./dist
 COPY --from=build /app/.strapi-updater.json ./.strapi-updater.json
 
 EXPOSE 1337
