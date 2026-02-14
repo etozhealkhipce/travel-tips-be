@@ -38,7 +38,7 @@ app:
     DATABASE_PORT: "5432"
   envFrom:
     - secretRef:
-        name: travel-tips-app-secrets
+        name: travel-tips-be-secrets
 
   resources:
     requests:
