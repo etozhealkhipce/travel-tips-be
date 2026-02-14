@@ -11,7 +11,7 @@ app:
     pullPolicy: Always
 
   imagePullSecrets:
-    - name: travel-tips-ghcr-secret
+    - name: travel-tips-be-ghcr-secret
 
   initContainers:
     - name: wait-for-db
