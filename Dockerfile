@@ -1,30 +1,60 @@
-FROM node:22-alpine AS base
+###################
+# DEPS
+###################
+FROM node:22-alpine AS deps
+WORKDIR /opt
 
-RUN apk update && apk add --no-cache build-base gcc autoconf automake zlib-dev libpng-dev vips-dev git > /dev/null 2>&1
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
+RUN apk add --no-cache libc6-compat
 
-WORKDIR /opt/
 COPY package.json package-lock.json ./
-RUN npm install -g node-gyp
-RUN npm config set fetch-retry-maxtimeout 600000 -g && npm install --only=production
-ENV PATH=/opt/node_modules/.bin:$PATH
+RUN npm ci
+
+###################
+# BUILD
+###################
+FROM node:22-alpine AS build
 WORKDIR /opt/app
+
+RUN apk add --no-cache \
+  build-base python3 make g++ \
+  autoconf automake \
+  zlib-dev libpng-dev \
+  vips-dev \
+  git
+
+COPY --from=deps /opt/node_modules /opt/node_modules
+ENV PATH=/opt/node_modules/.bin:$PATH
+
 COPY . .
+ENV NODE_ENV=production
 RUN npm run build
 
-FROM base AS production
+###################
+# PROD DEPS
+###################
+FROM node:22-alpine AS prod-deps
+WORKDIR /opt
 
-RUN apk add --no-cache vips-dev
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
-WORKDIR /opt/
-COPY --from=base /opt/node_modules ./node_modules
+RUN apk add --no-cache libc6-compat
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+###################
+# RUNTIME
+###################
+FROM node:22-alpine AS runtime
 WORKDIR /opt/app
-COPY --from=base /opt/app ./
+ENV NODE_ENV=production
+
+RUN apk add --no-cache vips libc6-compat
+
+COPY --from=prod-deps /opt/node_modules /opt/node_modules
 ENV PATH=/opt/node_modules/.bin:$PATH
+
+COPY --from=build /opt/app /opt/app
 
 RUN chown -R node:node /opt/app
 USER node
+
 EXPOSE 1337
 CMD ["npm", "run", "start"]
