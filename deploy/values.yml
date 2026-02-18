@@ -1,5 +1,5 @@
 app:
-  name: travel-tips-app
+  name: travel-tips-be
   namespace: sskd
   replicas: 1
   port: 1337
@@ -36,7 +36,6 @@ app:
     DATABASE_CLIENT: postgres
     DATABASE_HOST: travel-tips-db
     DATABASE_PORT: "5432"
-    # URL for Strapi to generate correct links
     URL: https://travel-tips.sskd.tech
   envFrom:
     - secretRef:
@@ -50,6 +49,26 @@ app:
       memory: "512Mi"
       cpu: "500m"
 
-  # Ingress disabled - handled by frontend
+  # Единый ingress для всего (на стороне backend)
   ingress:
-    enabled: false
+    enabled: true
+    host: travel-tips.sskd.tech
+    # Основной path указывает на backend, но мы его не используем
+    # Все маршруты через extraPaths
+    path: /_backend
+    extraPaths:
+      # Статика админки (самый специфичный)
+      - path: /.strapi
+        pathType: Prefix
+        serviceName: travel-tips-be
+        servicePort: 1337
+      # API и админка Strapi
+      - path: /strapi
+        pathType: Prefix
+        serviceName: travel-tips-be
+        servicePort: 1337
+      # Frontend (всё остальное) - должен быть последним!
+      - path: /
+        pathType: Prefix
+        serviceName: travel-tips-frontend
+        servicePort: 3000
